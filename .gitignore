@@ -1,0 +1,8 @@
+.env
+__pycache__/
+data/
+.kiro/
+.vscode/
+GEMINI.md
+RAG/
+model_load.ipynb
