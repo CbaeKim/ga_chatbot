@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from app.routers import llm, db
+import ollama
+import time
 
 app = FastAPI()
 
@@ -15,4 +17,4 @@ app.mount("/js", StaticFiles(directory="js"), name="js")
 
 @app.get('/', summary = "'index.html' load and display", tags = ['index.html'])
 async def read_index():
-    return FileResponse('index.html')
+    return FileResponse('./pages/index.html')

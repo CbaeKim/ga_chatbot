@@ -28,6 +28,8 @@ class user_input(BaseModel):
 @router.post('/', summary = "Language model without RAG applied")
 def request_sa(input_text: user_input, model: str = 'gpt-oss:20b') -> JSONResponse:
     """ RAG가 적용되지 않은 일반 Ollama 기반 모델 """
+    # Docker 환경에서 Ollama 호스트 설정
+    # ollama_client = ollama.Client(host='http://ollama:11434')
     response = ollama.chat(
         model = model,
         messages =[
@@ -58,14 +60,17 @@ def request_rag(input_text: user_input, model: str = 'gpt-oss:20b') -> JSONRespo
     """ 기본적인 RAG만 적용된 Ollama 모델 """
     # 1. LLM model
     llm = OllamaLLM(model = model, temperature = 0.1)
+    # llm = OllamaLLM(model = model, temperature = 0.1, base_url = 'http://ollama:11434')
 
     # 2. Embedding model
     embedding = OllamaEmbeddings(model = 'bge-m3')
+    # embedding = OllamaEmbeddings(model = 'bge-m3', base_url = 'http://ollama:11434')
 
     # 3. VectorStore
     vectorstore = Chroma(
         embedding_function = embedding,              # 임베딩 모델
-        persist_directory = '/Users/dooohn/Project/ga_chatbot/app/company_assistant',   # chroma db 경로
+        persist_directory = '/Users/dooohn/Project/ga_chatbot/app/company_assistant',
+        # persist_directory = '/chroma_db/company_assistant',   # chroma db 경로 (Docker용)
         collection_name = "ga_assistant"
     )
 
@@ -118,15 +123,21 @@ def request_rag(input_text: user_input, model: str = 'gpt-oss:20b') -> JSONRespo
 def request_rag_lcel(input_text: str, model: str = 'gpt-oss:20b', db: Client = Depends(connect_supabase)) -> PlainTextResponse:
     """ LCEL이 적용된 Ollama RAG 모델 """
     # 1. LLM model
-    llm = OllamaLLM(model = model, temperature = 0.1)
+    llm = OllamaLLM(
+        model = model,
+        temperature = 0.1,
+        # base_url = 'http://ollama:11434'  # Docker Server
+    )
 
     # 2. Embedding model
     embedding = OllamaEmbeddings(model = 'bge-m3')
+    # embedding = OllamaEmbeddings(model = 'bge-m3', base_url = 'http://ollama:11434')
 
     # 3. VectorStore
     vectorstore = Chroma(
         embedding_function = embedding,              # 임베딩 모델
-        persist_directory = '/Users/dooohn/Project/ga_chatbot/app/company_assistant',   # chroma db 경로
+        persist_directory = '/Users/dooohn/Project/ga_chatbot/app/company_assistant',
+        # persist_directory = '/chroma_db/company_assistant',   # chroma db 경로 (Docker용)
         collection_name = "ga_assistant"
     )
 
