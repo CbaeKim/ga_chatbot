@@ -3,13 +3,17 @@
 /**
  * 챗봇 API에 메시지를 보내고 응답을 받습니다.
  * @param {string} messageText 사용자 입력 메시지
+* @param {Array} history 대화 기록
  * @returns {Promise<string>} 전체 봇 응답 메시지
  */
-export async function getChatResponse(messageText) {
-    const chatData = { input_text: messageText };
+export async function getChatResponse(messageText, history) {
+    const chatData = {
+        input_text: messageText
+        // 임시로 히스토리 비활성화: history: JSON.stringify(history)
+    };
 
     try {
-        console.log('API 호출 시작:', messageText);
+        console.log('API 호출 시작:', messageText, history);
 
         const response = await fetch('/request/rag_model/lcel?' + new URLSearchParams(chatData).toString());
 

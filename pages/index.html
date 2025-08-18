@@ -3,7 +3,9 @@
 
 <head>
     <link rel="icon" href="../images/ga_assistant.ico" type="image/ico">
-    <link rel="stylesheet" href="../pages/index_style.css">
+    <link rel="stylesheet" href="../pages/style_shared.css">
+    <link rel="stylesheet" href="../pages/style_desktop.css" media="(min-width: 769px)">
+    <link rel="stylesheet" href="../pages/style_mobile.css" media="(max-width: 768px)">
     <!-- Marked.js for markdown parsing -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- MathJax for mathematical expressions -->
@@ -57,9 +59,14 @@
                 </div>
             </div>
         </div>
-        <div class="chat-input-area">
-            <textarea id="user-input" placeholder="GA Assistant에게 물어보기"></textarea>
-            <button id="send-button">전송</button>
+        <div class="input-container">
+            <div class="chat-input-area">
+                <textarea id="user-input" placeholder="GA Assistant에게 물어보기"></textarea>
+                <button id="send-button">전송</button>
+            </div>
+            <div class="footer-notice">
+                GA Assistant에 대한 버그, 개선사항은 main3373@gmail.com으로 문의해주세요.
+            </div>
         </div>
     </div>
 

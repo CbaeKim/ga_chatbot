@@ -6,3 +6,4 @@ data/
 GEMINI.md
 RAG/
 model_load.ipynb
+chroma_db
