@@ -13,7 +13,8 @@ class user_input(BaseModel):
     input_text: str
     chat_response: str
 
-def get_ip(request: Request):
+@router.get('/get_ip', summary = "Get User IP Address")
+async def get_ip(request: Request):
     """ Get User IP Address """
     forwarded_ip = request.headers.get('x-forwarded-for')
     if forwarded_ip:
@@ -22,7 +23,12 @@ def get_ip(request: Request):
         return request.client.host
 
 @router.post('/insert_row', summary = "request & insert chatting log", tags = ['Supabase'])
-async def request(data: user_input, user_ip: str = Depends(get_ip), db: Client = Depends(connect_supabase)):    
+async def request(data: user_input, user_ip: str = Depends(get_ip), db: Client = Depends(connect_supabase)):
+    """
+    [pydantic class: data]
+    - user_input: LLM에 유저가 요청한 쿼리
+    - chat_response: 유저가 요청한 쿼리에 대한 답변
+    """
     # Insert Input Log
     insert_data = {
         'user_id': 'public',
@@ -32,6 +38,6 @@ async def request(data: user_input, user_ip: str = Depends(get_ip), db: Client =
     }
     try:
         resopnse = db.from_('chat_logs').insert(insert_data).execute()
-        print("[Row Insert] Success.")
+        return print("[Row Insert] Success.")
     except Exception as e:
-        print(f"[Row Insert] Error: {e}")
+        return print(f"[Row Insert] Error: {e}")
