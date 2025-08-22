@@ -4,6 +4,7 @@ from typing import List, Dict
 from dotenv import load_dotenv
 from fastapi import APIRouter
 from langchain.evaluation import load_evaluator, EvaluatorType, EmbeddingDistance
+from langchain_core.documents import Document
 from langchain_openai import ChatOpenAI
 from sentence_transformers import CrossEncoder
 from korouge_score import rouge_scorer
@@ -24,6 +25,37 @@ embedding_evaluator = load_evaluator(
 
 # Cross Encoder Model
 cross_encoder = CrossEncoder('BAAI/bge-reranker-v2-m3')
+
+@router.post('/single_mrr', summary = "Calculate MRR about single label")
+def single_mrr(label: Document, predict: List[Document]) -> float:
+    rank = 1
+
+    # Search rank
+    for doc in predict:
+        if doc.page_content == label.page_content:
+            return 1 / rank
+        
+        rank += 1
+    
+    # If no label, return 0.0
+    return 0.0
+
+@router.post('/mrrs_mean', summary = "Calculate MRR about multi label")
+def mrrs_mean(labels: List[Document], predicts: List[List[Document]]) -> float:
+    max_range = len(labels)
+    
+    mrrs = []
+    
+    for i in range(0, max_range):
+        label = labels[i]
+        predict = predicts[i]
+
+        mrr = single_mrr(label = label, predict = predict)
+        mrrs.append(mrr)
+
+    mrr_mean = sum(mrrs) / len(mrrs)
+
+    return mrr_mean
 
 @router.get('/embedding_distance', summary = 'Embedding Evaluator: COSINE Distance')
 async def evaluate_embedding(df, query_col: str, label_col: str, chain, time_delay = None) -> dict:

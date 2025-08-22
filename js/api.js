@@ -1,73 +1,63 @@
-// js/api.js
+// ===== JavaScript 완전 디버깅 =====
 
-/**
- * 챗봇 API에 메시지를 보내고 응답을 받습니다.
- * @param {string} messageText 사용자 입력 메시지
-* @param {Array} history 대화 기록
- * @returns {Promise<string>} 전체 봇 응답 메시지
- */
 export async function getChatResponse(messageText, history) {
+    console.log('=== 함수 시작 디버깅 ===');
+    console.log('messageText:', messageText);
+    console.log('history parameter:', history);
+    console.log('history type:', typeof history);
+    console.log('history is array:', Array.isArray(history));
+    console.log('history length:', history ? history.length : 'N/A');
+    
+    // history 내용 상세 확인
+    if (history && history.length > 0) {
+        console.log('history content:');
+        history.forEach((item, index) => {
+            console.log(`  [${index}]:`, item);
+        });
+    }
+
     const chatData = {
-        input_text: messageText
-        // 임시로 히스토리 비활성화: history: JSON.stringify(history)
+        input_text: messageText,
+        history: history || []
     };
 
+    console.log('=== chatData 생성 후 ===');
+    console.log('chatData:', chatData);
+    console.log('chatData.history:', chatData.history);
+    console.log('chatData.history type:', typeof chatData.history);
+    
+    const jsonString = JSON.stringify(chatData);
+    console.log('=== JSON 직렬화 후 ===');
+    console.log('JSON string:', jsonString);
+    
+    // JSON 다시 파싱해서 확인
+    const reparsed = JSON.parse(jsonString);
+    console.log('Reparsed data:', reparsed);
+    console.log('Reparsed history:', reparsed.history);
+    console.log('Reparsed history type:', typeof reparsed.history);
+
     try {
-        console.log('API 호출 시작:', messageText, history);
+        const response = await fetch('/request/rag_model/lcel', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: jsonString  // 이미 문자열이므로 다시 stringify 안함
+        });
 
-        const response = await fetch('/request/rag_model/lcel?' + new URLSearchParams(chatData).toString());
-
+        console.log('Response status:', response.status);
+        
         if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Error response:', errorText);
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        // 응답 타입 확인
-        const contentType = response.headers.get('content-type');
-        console.log('Content-Type:', contentType);
-        
-        let fullResponse;
-        if (contentType && contentType.includes('application/json')) {
-            // JSON 응답인 경우
-            const jsonResponse = await response.json();
-            console.log('JSON 응답:', jsonResponse);
-            fullResponse = jsonResponse.message || jsonResponse.content || JSON.stringify(jsonResponse);
-        } else {
-            // 텍스트 응답인 경우
-            fullResponse = await response.text();
-        }
-        
-        console.log('API 응답 완료:', fullResponse.length, '자');
-        console.log('API 응답 내용:', fullResponse);
-        console.log('API 응답 타입:', typeof fullResponse);
-        
-        // 안전장치: 만약 객체라면 문자열로 변환
-        if (typeof fullResponse === 'object') {
-            console.warn('응답이 객체입니다. 문자열로 변환합니다.');
-            fullResponse = JSON.stringify(fullResponse);
-        }
-
-        // DB insert
-        const dbData = {
-            input_text: messageText,
-            chat_response: fullResponse
-        };
-
-        // async 함수 내에서 Promise를 기다리지 않으려면 await를 제거합니다.
-        // DB insert의 성공 여부가 main 로직에 영향을 주지 않는 경우
-        fetch('/db/insert_row', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(dbData)
-        }).catch(error => {
-            console.error('DB insert failed:', error);
-        });
-
+        const fullResponse = await response.text();
         return fullResponse;
 
     } catch (error) {
-        console.error('API 호출 예외:', error);
-        const errorMessage = '죄송합니다. 답변을 가져오는 중 오류가 발생했습니다. 다시 시도해주세요.';
-        // Promise를 반환하는 함수이므로 throw 대신 Promise.reject를 사용합니다.
-        throw new Error(errorMessage);
+        console.error('API 호출 오류:', error);
+        throw error;
     }
 }

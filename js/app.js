@@ -36,6 +36,7 @@ const addToHistory = (userMessage, botResponse) => {
     // 로컬 스토리지에 저장 (브라우저 새로고침 시에도 유지)
     localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
     console.log('현재 히스토리 개수:', chatHistory.length);
+    console.log('추가된 히스토리:', chatHistory[chatHistory.length - 1]);
 };
 
 const loadHistoryFromStorage = () => {
@@ -62,32 +63,6 @@ const initializeOnPageLoad = () => {
     chatHistory = [];
     localStorage.removeItem('chatHistory');
     console.log('페이지 로드: 히스토리 초기화 완료');
-};
-
-// DOMContentLoaded 이벤트 리스너를 함수로 분리
-const handleDOMContentLoaded = () => {
-    // 페이지 새로고침 시 히스토리 초기화
-    initializeOnPageLoad();
-
-    const initialMessage = document.getElementById('initial-bot-message');
-    if (initialMessage) {
-        const typingIndicator = initialMessage.querySelector('.typing-indicator');
-        const messageBubble = initialMessage.querySelector('.message-bubble');
-        const messageContent = initialMessage.querySelector('.message-content');
-
-        const now = new Date();
-        const timeString = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: true });
-        const timestamp = document.createElement('span');
-        timestamp.classList.add('timestamp');
-        timestamp.textContent = timeString;
-
-        messageContent.appendChild(timestamp);
-
-        setTimeout(() => {
-            if (typingIndicator) typingIndicator.style.display = 'none';
-            if (messageBubble) messageBubble.style.display = 'block';
-        }, 1500);
-    }
 };
 
 // 키보드, 뷰포트 관련 함수들
@@ -119,9 +94,7 @@ const restoreScrollPosition = () => {
     }, isIOS ? 300 : 100);
 };
 
-
-
-// 메시지 전송 로직
+// 메시지 전송 로직 - 핵심 수정 부분
 const sendMessage = () => {
     const messageText = userInput.value.trim();
     if (messageText === '' || isProcessing) {
@@ -137,7 +110,11 @@ const sendMessage = () => {
     userInput.value = '';
     showTypingIndicator();
 
-    getChatResponse(messageText, [])
+    // 수정: 빈 배열 대신 현재 chatHistory 전달
+    console.log('API 호출 전 현재 히스토리:', chatHistory);
+    console.log('히스토리 길이:', chatHistory.length);
+
+    getChatResponse(messageText, chatHistory)  // 여기가 핵심 수정!
         .then(fullResponse => {
             console.log('받은 응답:', fullResponse);
             console.log('응답 타입:', typeof fullResponse);
@@ -223,18 +200,21 @@ const sendMessage = () => {
                             chatMessages.scrollTop = chatMessages.scrollHeight;
                             // 히스토리에 대화 추가
                             addToHistory(messageText, fullResponse);
+                            console.log('히스토리 추가 후 총 개수:', chatHistory.length);
                         })
                         .catch(err => {
                             console.error('MathJax 렌더링 오류:', err);
                             chatMessages.scrollTop = chatMessages.scrollHeight;
                             // 오류가 발생해도 히스토리에 추가
                             addToHistory(messageText, fullResponse);
+                            console.log('히스토리 추가 후 총 개수:', chatHistory.length);
                         });
                 } else {
                     console.log('MathJax 사용 불가, 일반 스크롤');
                     chatMessages.scrollTop = chatMessages.scrollHeight;
                     // 히스토리에 대화 추가
                     addToHistory(messageText, fullResponse);
+                    console.log('히스토리 추가 후 총 개수:', chatHistory.length);
                 }
             };
 
@@ -266,6 +246,32 @@ const sendMessage = () => {
                 userInput.focus();
             }
         });
+};
+
+// DOMContentLoaded 이벤트 리스너를 함수로 분리
+const handleDOMContentLoaded = () => {
+    // 페이지 새로고침 시 히스토리 초기화
+    initializeOnPageLoad();
+
+    const initialMessage = document.getElementById('initial-bot-message');
+    if (initialMessage) {
+        const typingIndicator = initialMessage.querySelector('.typing-indicator');
+        const messageBubble = initialMessage.querySelector('.message-bubble');
+        const messageContent = initialMessage.querySelector('.message-content');
+
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: true });
+        const timestamp = document.createElement('span');
+        timestamp.classList.add('timestamp');
+        timestamp.textContent = timeString;
+
+        messageContent.appendChild(timestamp);
+
+        setTimeout(() => {
+            if (typingIndicator) typingIndicator.style.display = 'none';
+            if (messageBubble) messageBubble.style.display = 'block';
+        }, 1500);
+    }
 };
 
 // 이벤트 리스너 등록
@@ -321,6 +327,7 @@ document.addEventListener('touchstart', () => {
 }, { passive: true });
 
 setAppHeight();
+
 // 디버깅용 전역 함수들
 window.showChatHistory = () => {
     console.log('현재 채팅 히스토리:', chatHistory);

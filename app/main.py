@@ -1,23 +1,31 @@
 from langchain_ollama import OllamaLLM
-from langchain_ollama import OllamaEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from app.routers import llm, db, metrics
+from pathlib import Path
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """ Server Start >> LLM, Embedding, Vectorstore memory load """
     # Definition LLM, Embedding, Vectorstore
     llm = OllamaLLM(model = 'gpt-oss:20b', temperature = 0.1)
-    embedding = OllamaEmbeddings(model = 'bge-m3')
+
+    embedding = HuggingFaceEmbeddings(
+        model_name = 'FronyAI/frony-embed-large-ko-v1',
+        model_kwargs = {'device': 'mps'},
+        encode_kwargs = {'normalize_embeddings': True}
+    )
+
     vectorstore = Chroma(
         embedding_function = embedding,
         collection_name = 'ga_assistant',
-        persist_directory = '/Users/dooohn/Project/ga_chatbot/app/company_assistant'
+        persist_directory = '/Users/dooohn/Project/ga_chatbot/ga_assistant_store'
     )
+
     print("Resource Load Success.")
 
     # 의존성 주입

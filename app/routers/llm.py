@@ -1,13 +1,21 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from dotenv import load_dotenv
+from pathlib import Path
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi import APIRouter, Depends, Query, Request
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnableLambda
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.retrievers import ContextualCompressionRetriever
+from langchain.retrievers.document_compressors import CrossEncoderReranker
+from langchain_community.cross_encoders import HuggingFaceCrossEncoder
+from langchain.retrievers.document_compressors import DocumentCompressorPipeline
+from langchain.retrievers.document_compressors import EmbeddingsFilter
+from langchain_huggingface import HuggingFaceEmbeddings
 from ..dependency.db import connect_supabase
 from supabase import Client
+from typing import List, Dict, Any, Optional, Union
 import time, json, os
 
 # 라우터 객체 설정
@@ -16,12 +24,18 @@ router = APIRouter(
     tags = ['Chat Bot']    # API docs에 표시될 태그
 )
 
-load_dotenv(dotenv_path = '../../.env')
+# Gemini API KEY
+load_dotenv()
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 
-class user_input(BaseModel):
+# Root path
+root_path = Path.cwd()
+
+# Pydantic
+class ChatRequest(BaseModel):
     """ Validation User input """
-    input_text: str
+    input_text: str                  # User Input Text
+    history: Optional[Any] = None    # receive json from javascript
 
 @router.get('/gemini', summary = 'Request Gemini Model')
 def request_gemini(input_text: str, model: str = 'gemini-2.5-flash', api_key = GEMINI_API_KEY, request_delay = None):
@@ -39,99 +53,108 @@ def request_gemini(input_text: str, model: str = 'gemini-2.5-flash', api_key = G
 
     return llm.invoke(input_text)
 
+def format_docs(docs):
+    """ Merge List in string """
+    return '\n\n'.join([doc.page_content for doc in docs])
 
-@router.get('/rag_model/lcel', summary = 'Request RAG Model apply LCEL')
-def request_rag_lcel(request: Request, input_text: str, history: str = Query(None), model: str = 'gpt-oss:20b', db: Client = Depends(connect_supabase)) -> PlainTextResponse:
+@router.post('/rag_model/lcel', summary = 'Request RAG Model apply LCEL')
+def request_rag_lcel(request: Request, chat_request: ChatRequest, model: str = 'gpt-oss:20b', db: Client = Depends(connect_supabase)) -> PlainTextResponse:
     """ LCEL이 적용된 Ollama RAG 모델 """
-    # History Parse & Add history to context
-    chat_history = []
-    history_context = ""
-    
-    # Parse Chat history
-    if history:
-        try:
-            chat_history = json.loads(history)
-            print(f"Load history: {len(chat_history)}EA")
-        except json.JSONDecodeError:
-            print(f"Failed parse history, execute empty history")
-            chat_history = []
-    
-    # if exist chat history, add history context
-    if chat_history:
-        history_context = "\n\n[Previous Conversation History]\n"
-        # 최근 5개 대화만 사용
-        for conv in chat_history[-5:]:
-            history_context += f"사용자: {conv.get('user', '')}\n"
-            history_context += f"AI 답변: {conv.get('assistant', '')}\n\n"
+    input_text = chat_request.input_text
+    history = chat_request.history
+    if isinstance(history, list):
+        if len(history) > 0:
+            print(history)
+        else:
+            print(f"history is empty")
 
     # 1. Dependency injection: llm, embedding, vectorstore
     llm = request.app.state.llm
     embedding = request.app.state.embedding
     vectorstore = request.app.state.vectorstore
 
-    # 2. Retriever
-    retriever = vectorstore.as_retriever(search_kwargs={'k': 3})
+    # 2. Retriever: Contextual Compressor -> Cross Encoder Reranker + EmbeddingsFilter
+    retriever = vectorstore.as_retriever(search_kwargs={'k': 2})
+
+    # Define Cross Encoder
+    CrossEncoder = HuggingFaceCrossEncoder(model_name = 'BAAI/bge-reranker-v2-m3')
     
-    # 3. Definition Prompt text
-    context_text = f"""
-    네 이름은 'GA Assistant'야.
-    - 직무 : Dooohn Corporation의 총무팀 AI 비서
+    # 2-1. Re-rank Compressor
+    re_ranker = CrossEncoderReranker(
+    model = CrossEncoder,
+    top_n = 2
+    )
 
-    사용자는 너에게 Dooohn Corporation에 대한 질문을 할거야.
+    # 2-2. EmbeddingsFilter
+    EmbeddingFilter = EmbeddingsFilter(
+    embeddings = embedding,
+    similarity_threshold = 0.3
+    )
 
-    [Rules]
-    1. 한국어로 답변
-    2. 문장 형식은 공손하게 답변하고, 주어진 [Context]를 이용해서만 답변해.
-    3. 추가로 답변은 가독성 향상을 위해 Markdown으로 구조화해서 단계적으로 답변해.
-    4. 표를 사용할 때는 표 앞뒤에 반드시 빈 줄을 넣어서 올바른 Markdown 형식을 유지해.
-    5. URL의 경우 '- 링크 : 링크 삽입' 식으로 명확하게 분리해줘.
-    6. [Context]에서 직접적인 답변을 찾을 수 없고, 관련성도 낮다면 '요청하시는 내용의 확인이 어렵습니다.\\n번거로우시겠지만 총무팀에 문의 부탁드립니다.\\n-email: main3373@gmail.com)'로 대답해
-    7. [Previous Conversation History]에서 이전 대화 내용을 참고하여 맥락에 맞는 답변을 제공해. (히스토리가 없다면 비어있음)
+    # 2-3. Compressor Pipeline
+    compressor_pipeline = DocumentCompressorPipeline(
+        transformers= [re_ranker, EmbeddingFilter]
+    )
+
+    # 2-4. Final retriever
+    final_retriever = ContextualCompressionRetriever(
+        base_compressor = compressor_pipeline,
+        base_retriever = retriever
+    )
     
-    [Form]
-    - 요약 : 질문에 대한 요약 답변
-    - 상세 내용 : 질문에 대한 상세 답변
-    
-    {history_context}
-    """
+    # 3. Load Prompt text -> loaded_prompt: str
+    loaded_prompt = ""
 
-    # 4. Definition Prompt Text
-    prompt_text = [
-        ('system', '{context_text}'),   # 컨텍스트
-    ]
-    
-    # 5. Add chat history to prompt
-    for message in chat_history:
-        if message.get('role') == 'user':
-            prompt_text.append(('human', message.get('content')))
-        elif message.get('role') == 'assistant':
-            prompt_text.append(('ai', message.get('content')))
+    try:
+        file_path = root_path / 'prompt' / 'llm_context.txt'
+        with open(file_path, 'r', encoding = 'utf-8') as f:
+            loaded_prompt = f.read()    # Load Prompt Text
 
-    prompt_text.append(('human', '{input_text}')) # 질문
+    except FileNotFoundError:
+        print(f"Error: {file_path} not found")
 
-    # 6. Create Prompt
-    prompt = ChatPromptTemplate.from_messages(prompt_text)
+    except Exception as e:
+        print(f"Error: {e}")
 
-    def format_docs(docs):
-        """ Merge List in string """
-        return '\n\n'.join([doc.page_content for doc in docs])
-    
+    # 4. Load Chat History -> history_context: str
+    history_context = ""
+
+    try:
+        if history and len(history) > 0:
+            print(f"Load history: {len(history)}EA")
+
+            history_context = "\n\n[Previous Conversation History]\n"
+            # 최근 5개 대화만 사용
+            for conv in history[-5:]:
+                history_context += f"USER: {conv.get('user', '')}\n"
+                history_context += f"AI Response: {conv.get('assistant', '')}\n\n"
+        else:
+            print("history is None")
+            
+    except json.JSONDecodeError:
+        print(f"Failed parse history, execute empty history")
+
+    # 5. Create Prompt
+    prompt_text = loaded_prompt   # Variable name: history_context, context, user_input
+
+    prompt = ChatPromptTemplate.from_template(prompt_text)
+
     # 7. Retriever Chaining
     def get_input_string(x):
-        """ stream() : Input type is Dictionary"""
+        """ If input type is dictionary """
         if isinstance(x, dict):
             return x['input_text']
         return x
-
-    retriever_chain = RunnableLambda(get_input_string) | retriever | format_docs
+    
+    retriever_chain = RunnableLambda(get_input_string) | final_retriever | format_docs
 
     # 8. Chaining RAG
-    # Input >> dict logic >> prompt >> llm >> String Parsing
     rag_chain = (
-        # The input to the whole chain is a dictionary: {'input_text': '...'}
+        # key: llm_context.txt variables, value: value
         {
-            'context_text': retriever_chain,
-            'input_text': RunnableLambda(get_input_string)
+            'history_context': RunnableLambda(lambda x: history_context),
+            'context': retriever_chain,
+            'user_input': RunnablePassthrough()
         }
         | prompt
         | llm
