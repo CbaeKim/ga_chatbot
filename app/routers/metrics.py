@@ -11,7 +11,7 @@ from korouge_score import rouge_scorer
 load_dotenv()
 
 router = APIRouter(
-    prefix = "/metrics",    # 웹 페이지 path
+    prefix = "/evaluate_metrics/llm",    # 웹 페이지 path
     tags = ['Metrics']      # API docs에 표시될 태그
 )
 
