@@ -7,12 +7,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.retrievers import ContextualCompressionRetriever
-from langchain.retrievers.document_compressors import CrossEncoderReranker
-from langchain_community.cross_encoders import HuggingFaceCrossEncoder
-from langchain.retrievers.document_compressors import DocumentCompressorPipeline
-from langchain.retrievers.document_compressors import EmbeddingsFilter
-from langchain_huggingface import HuggingFaceEmbeddings
 from ..dependency.db import connect_supabase
 from supabase import Client
 from typing import List, Dict, Any, Optional, Union
@@ -62,47 +56,12 @@ def request_rag_lcel(request: Request, chat_request: ChatRequest, model: str = '
     """ LCEL이 적용된 Ollama RAG 모델 """
     input_text = chat_request.input_text
     history = chat_request.history
-    if isinstance(history, list):
-        if len(history) > 0:
-            print(history)
-        else:
-            print(f"history is empty")
 
     # 1. Dependency injection: llm, embedding, vectorstore
     llm = request.app.state.llm
-    embedding = request.app.state.embedding
-    vectorstore = request.app.state.vectorstore
+    retriever = request.app.state.retriever
 
-    # 2. Retriever: Contextual Compressor -> Cross Encoder Reranker + EmbeddingsFilter
-    retriever = vectorstore.as_retriever(search_kwargs={'k': 2})
-
-    # Define Cross Encoder
-    CrossEncoder = HuggingFaceCrossEncoder(model_name = 'BAAI/bge-reranker-v2-m3')
-    
-    # 2-1. Re-rank Compressor
-    re_ranker = CrossEncoderReranker(
-    model = CrossEncoder,
-    top_n = 2
-    )
-
-    # 2-2. EmbeddingsFilter
-    EmbeddingFilter = EmbeddingsFilter(
-    embeddings = embedding,
-    similarity_threshold = 0.3
-    )
-
-    # 2-3. Compressor Pipeline
-    compressor_pipeline = DocumentCompressorPipeline(
-        transformers= [re_ranker, EmbeddingFilter]
-    )
-
-    # 2-4. Final retriever
-    final_retriever = ContextualCompressionRetriever(
-        base_compressor = compressor_pipeline,
-        base_retriever = retriever
-    )
-    
-    # 3. Load Prompt text -> loaded_prompt: str
+    # 2. Load Prompt text -> loaded_prompt: str
     loaded_prompt = ""
 
     try:
@@ -116,7 +75,7 @@ def request_rag_lcel(request: Request, chat_request: ChatRequest, model: str = '
     except Exception as e:
         print(f"Error: {e}")
 
-    # 4. Load Chat History -> history_context: str
+    # 3. Load Chat History -> history_context: str
     history_context = ""
 
     try:
@@ -134,21 +93,19 @@ def request_rag_lcel(request: Request, chat_request: ChatRequest, model: str = '
     except json.JSONDecodeError:
         print(f"Failed parse history, execute empty history")
 
-    # 5. Create Prompt
+    # 4. Create Prompt
     prompt_text = loaded_prompt   # Variable name: history_context, context, user_input
 
     prompt = ChatPromptTemplate.from_template(prompt_text)
 
-    # 7. Retriever Chaining
+    # 5. Retriever Chaining
     def get_input_string(x):
         """ If input type is dictionary """
-        if isinstance(x, dict):
-            return x['input_text']
-        return x
+        return x['input_text'] if isinstance(x, dict) else x
     
-    retriever_chain = RunnableLambda(get_input_string) | final_retriever | format_docs
+    retriever_chain = RunnableLambda(get_input_string) | retriever | format_docs
 
-    # 8. Chaining RAG
+    # 6. Chaining RAG
     rag_chain = (
         # key: llm_context.txt variables, value: value
         {
