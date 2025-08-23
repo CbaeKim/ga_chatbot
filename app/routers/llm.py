@@ -10,7 +10,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from ..dependency.db import connect_supabase
 from supabase import Client
 from typing import List, Dict, Any, Optional, Union
-import time, json, os
+import time, json, os, gc
 
 # 라우터 객체 설정
 router = APIRouter(
@@ -119,5 +119,7 @@ def request_rag_lcel(request: Request, chat_request: ChatRequest, model: str = '
     )
 
     response = rag_chain.invoke({'input_text': input_text})
+
+    gc.collect()
 
     return PlainTextResponse(content=response, media_type="text/plain")

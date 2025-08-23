@@ -18,7 +18,10 @@ from pathlib import Path
 async def lifespan(app: FastAPI):
     """ Server Start >> LLM, Embedding, Vectorstore memory load """
     # Definition LLM, Embedding, Vectorstore
-    llm = OllamaLLM(model = 'gpt-oss:20b', temperature = 0.1)
+    llm = OllamaLLM(
+        model = 'gpt-oss:20b',
+        temperature = 0.1
+    )
 
     embedding = HuggingFaceEmbeddings(
         model_name = 'FronyAI/frony-embed-large-ko-v1',

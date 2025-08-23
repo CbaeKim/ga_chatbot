@@ -18,8 +18,8 @@ You must absolutely answer based on the [Rules] below.
 
 [Form]
 - Note: If your answer is simple, you don't need to follow the [Form].
-- Summary: A summarized answer to the question.
-- Details: A detailed answer to the question.
+- 요약: A summarized answer to the question.
+- 상세내용: A detailed answer to the question.
 
 {history_context}
 
